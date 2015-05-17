@@ -36,7 +36,7 @@ Function Invoke-CsvSqlcmd {
 	 .NOTES
 		Author  : Chrissy LeMaire
 		Requires: 	PowerShell 3.0
-		Version: 1.0.5
+		Version: 1.0.6
 		DateUpdated: 2015-May-17
 
 	 .LINK 
@@ -94,7 +94,7 @@ Function Invoke-CsvSqlcmd {
 		}
 		
 		# Check for drivers. 
-		#$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.ACE.OLEDB.*" }
+		$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.ACE.OLEDB.*" }
 		
 		if ($provider -eq $null) {
 			$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.Jet.OLEDB.*" }	
