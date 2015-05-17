@@ -1,5 +1,5 @@
 Function Invoke-CsvSqlcmd {
-	
+
 	<# 
 	 .SYNOPSIS
 		Natively query CSV files using SQL syntax
@@ -36,7 +36,7 @@ Function Invoke-CsvSqlcmd {
 	 .NOTES
 		Author  : Chrissy LeMaire
 		Requires: 	PowerShell 3.0
-		Version: 0.9.3.1
+		Version: 1.0.5
 		DateUpdated: 2015-May-17
 
 	 .LINK 
@@ -64,7 +64,6 @@ Function Invoke-CsvSqlcmd {
 	[CmdletBinding()] 
 	Param(
 		[Parameter(Mandatory=$true)] 
-		[ValidateScript({Test-Path $_ })]
 		[string[]]$csv,
 		[switch]$FirstRowColumnNames,
 		[string]$Delimiter = ",",
@@ -76,9 +75,15 @@ Function Invoke-CsvSqlcmd {
 	BEGIN {
 		# In order to ensure consistent results, a schema.ini file must be created.
 		# If a schema.ini currently exists, it will be moved to TEMP temporarily.
+		
+		if (!$shellswitch) {
+		$resolvedcsv = @()
+		foreach ($file in $csv) { $resolvedcsv += (Resolve-Path $file).Path }
+		$csv = $resolvedcsv
+		
 		$movedschemaini = @{}
 		foreach ($file in $csv) {
-			$file = (Resolve-Path $file).Path; $directory = Split-Path $file
+			$directory = Split-Path $file
 			$schemaexists = Test-Path "$directory\schema.ini"
 			if ($schemaexists -eq $true) {
 				$newschemaname = "$env:TEMP\$(Split-Path $file -leaf)-schema.ini"
@@ -86,9 +91,10 @@ Function Invoke-CsvSqlcmd {
 				Move-Item "$directory\schema.ini" $newschemaname -Force
 			}
 		}
+		}
 		
 		# Check for drivers. 
-		$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.ACE.OLEDB.*" }
+		#$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.ACE.OLEDB.*" }
 		
 		if ($provider -eq $null) {
 			$provider = (New-Object System.Data.OleDb.OleDbEnumerator).GetElements() | Where-Object { $_.SOURCES_NAME -like "Microsoft.Jet.OLEDB.*" }	
@@ -103,25 +109,23 @@ Function Invoke-CsvSqlcmd {
 	}
 
 	PROCESS {
-
-		# Create the resulting datatable
-		$dt = New-Object System.Data.DataTable
 		
 		# Try hard to find a suitable provider; switch to x86 if necessary.
 		# Encode the SQL string, since some characters
-		
 		if ($provider -eq $null) {
 			$bytes  = [System.Text.Encoding]::UTF8.GetBytes($sql)
 			$sql = [System.Convert]::ToBase64String($bytes)
+			
 			if ($firstRowColumnNames) { $frcn = "-FirstRowColumnNames" }
-				&"$env:windir\syswow64\windowspowershell\v1.0\powershell.exe" "$PSCommandPath -csv '$csv' $frcn -Delimiter '$Delimiter' -SQL $sql -shellswitch" 
+				$csv = $csv -join ","
+				&"$env:windir\syswow64\windowspowershell\v1.0\powershell.exe" "Set-ExecutionPolicy Bypass -confirm:0; Invoke-CsvSqlcmd -csv $csv $frcn -Delimiter '$Delimiter' -SQL $sql -shellswitch" 
 				return
 		}
-		
 		# If the shell has switched, decode the $sql string.
 		if ($shellswitch) {
 			$bytes  = [System.Convert]::FromBase64String($sql)
 			$sql = [System.Text.Encoding]::UTF8.GetString($bytes)
+			$csv = $csv -Split ","
 		}
 		
 		# Check for proper SQL syntax, which for the purposes of this module must include the word "table"
@@ -150,11 +154,15 @@ Function Invoke-CsvSqlcmd {
 			}
 		}
 		
+		# Create the resulting datatable
+		$dt = New-Object System.Data.DataTable
+		
+		# Go through each file
 		foreach ($file in $csv) {
 		
 			# Unfortunately, passing delimiter within the connection string is unreliable, so we'll use schema.ini instead
 			# The default delimiter in Windows changes depending on country, so we'll do this for every delimiter, even commas.
-			$file = (Resolve-Path $file).Path; $filename = Split-Path $file -leaf; $directory = Split-Path $file
+			$filename = Split-Path $file -leaf; $directory = Split-Path $file
 			Add-Content -Path "$directory\schema.ini" -Value "[$filename]"
 			Add-Content -Path "$directory\schema.ini" -Value "Format=Delimited($Delimiter)"
 			Add-Content -Path "$directory\schema.ini" -Value "ColNameHeader=$FirstRowColumnNames"
@@ -192,11 +200,6 @@ Function Invoke-CsvSqlcmd {
 					throw "Looks like your SQL syntax may be invalid. `nCheck the documentation for more information or start with a simple -sql 'select top 10 * from table'"
 				} else { Write-Error "Execute failed: $errormessage" }
 			}
-				
-			# Use a file to facilitate the passing of a datatable from x86 to x64 if necessary
-			if ($shellswitch) { 
-				try { $dt | Export-Clixml "$env:TEMP\dt-$file.xml" } catch { throw "Could not export datatable to file." }
-			}
 			
 			# This should automatically close, but just in case...
 			try {
@@ -204,12 +207,17 @@ Function Invoke-CsvSqlcmd {
 				$null = $cmd.Dispose; $null = $conn.Dispose
 			} catch { Write-Warning "Could not close connection. This is just an informational message." }
 		}
+		
+		# Use a file to facilitate the passing of a datatable from x86 to x64 if necessary
+		if ($shellswitch) {
+			try { $dt | Export-Clixml "$env:TEMP\invoke-csvsqlcmd-dt.xml" -Force } catch { throw "Could not export datatable to file." }
+		}
 	}
 
 	END {
 		# Delete new schema files
 		foreach ($file in $csv) {
-			$file = (Resolve-Path $file).Path; $directory = Split-Path $file
+			$directory = Split-Path $file
 			$null = Remove-Item "$directory\schema.ini" -Force -ErrorAction SilentlyContinue
 		}
 		
@@ -219,15 +227,13 @@ Function Invoke-CsvSqlcmd {
 				Move-Item $item.keys $item.values -Force -ErrorAction SilentlyContinue	
 			}
 		}
-			
+
 		# If going between shell architectures, import a properly structured datatable.
-		if ($dt -eq $null) { 
-			$dt = Import-Clixml "$env:TEMP\dt*.xml"; 
-			Remove-Item  "$env:TEMP\dt.xml" -ErrorAction SilentlyContinue 
+		if ($dt -eq $null -and (Test-Path "$env:TEMP\invoke-csvsqlcmd-dt.xml")) {
+			$dt = Import-Clixml "$env:TEMP\invoke-csvsqlcmd-dt.xml" 
+			$null = Remove-Item "$env:TEMP\invoke-csvsqlcmd-dt.xml" -ErrorAction SilentlyContinue
 		}
 		
-		# Finally, return the resulting datatable
-		if ($shellswitch -eq $false) { return $dt }
+		if ($shellswitch -eq $false) { return $dt }	
 	}
-
 }
