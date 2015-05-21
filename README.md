@@ -25,3 +25,21 @@ Since the -FirstRowColumnNames switch was not used, the query engine automatical
     $datatable.rows.count
 
 Invoke-CsvSqlcmd.ps1 returns rows of a datatable, and in this case, we create a datatable by assigning the output of the script to a variable, instead of to the screen.
+
+SqlMaxMemory
+--------------
+Inspired by Jonathan Kehayias's post about SQL Server Max memory (http://bit.ly/sqlmemcalc), this function displays SQL Server's: 
+total memory, currently configured SQL max memory, and the calculated recommendation.
+
+Jonathan notes that the forumla used provides a *general recommendation* that doesn't account for everything that may be going on in your specific enviornment. 
+
+Get-SqlMaxMemory displays information relating to SQL Server Max Memory configuration settings. Works on SQL Server 2000-2014.
+Set-SqlMaxMemory sets SQL Server max memory then displays information relating to SQL Server Max Memory configuration settings. Works on SQL Server 2000-2014.
+
+Examples
+-----
+	Get-SqlMaxMemory -SqlCms sqlcluster
+	Get-SqlMaxMemory -SqlCms sqlcluster | Where-Object { $_.SqlMaxMB -gt $_.TotalMB } | Set-SqlMaxMemory -UseRecommended
+	Set-SqlMaxMemory -SqlCms sqlcluster -SqlCmsGroups Express -MaxMB 512 -Verbose
+	Get-SqlMaxMemory sqlcluster
+	Set-SqlMaxMemory sqlcluster 25600
