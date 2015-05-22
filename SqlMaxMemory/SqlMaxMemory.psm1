@@ -121,10 +121,10 @@ Function Get-SqlMaxMemory {
 	Inspired by Jonathan Kehayias's post about SQL Server Max memory (http://bit.ly/sqlmemcalc), this script displays a SQL Server's: 
 	total memory, currently configured SQL max memory, and the calculated recommendation.
 
-	Jonathan notes that the forumla used provides a *general recommendation* that doesn't account for everything that may be going on in your specific enviornment. 
+	Jonathan notes that the formula used provides a *general recommendation* that doesn't account for everything that may be going on in your specific environment. 
 	
 	.PARAMETER Servers
-	Allows you to specify a comma seperated list of servers to query.
+	Allows you to specify a comma separated list of servers to query.
 	
 	.PARAMETER ServersFromFile
 	Allows you to specify a list that's been populated by a list of servers to query. The format is as follows
@@ -197,7 +197,7 @@ Function Get-SqlMaxMemory {
 			
 			# Some servers underreport by 1MB.
 			if (($totalmemory % 1024) -ne 0) { $totalMemory = $totalMemory + 1 }
-			if ($servername -eq "sqlcluster") { $totalMemory = 1024*32 }
+			
 			if ($totalMemory -ge 4096) {
 				$currentCount = $totalMemory
 				while ($currentCount/4096 -gt 0) {
@@ -231,7 +231,7 @@ Function Set-SqlMaxMemory {
 	Sets SQL Server max memory then displays information relating to SQL Server Max Memory configuration settings. Works on SQL Server 2000-2014.
 	
 	.PARAMETER Servers
-	Allows you to specify a comma seperated list of servers to query.
+	Allows you to specify a comma separated list of servers to query.
 	
 	.PARAMETER ServersFromFile
 	Allows you to specify a list that's been populated by a list of servers to query. The format is as follows
@@ -249,10 +249,9 @@ Function Set-SqlMaxMemory {
 	Specifies the max megabytes
 	
 	.PARAMETER UseRecommended
-	Inspired by Jonathan Kehayias's post about SQL Server Max memory (http://bit.ly/sqlmemcalc), this script displays a SQL Server's: 
-	total memory, currently configured SQL max memory, and the calculated recommendation.
+	Inspired by Jonathan Kehayias's post about SQL Server Max memory (http://bit.ly/sqlmemcalc), this uses a formula to determine the default optimum RAM to use, then sets the SQL max value to that number.
 
-	Jonathan notes that the forumla used provides a *general recommendation* that doesn't account for everything that may be going on in your specific enviornment. 
+	Jonathan notes that the formula used provides a *general recommendation* that doesn't account for everything that may be going on in your specific environment. 
 	
 	.NOTES 
 	Author  : Chrissy LeMaire
