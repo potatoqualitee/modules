@@ -4,7 +4,7 @@ Function Reset-SqlSaPassword {
 	 .SYNOPSIS 
 	  This function will allow administrators to regain access to SQL Servers in the event that passwords or access was lost.
 	  
-	  Supports SQL Server 2005 and above. Windows Server administrator access is required.
+	  Supports SQL Server 2005 and above. Windows administrator access is required.
 	  
 	 .DESCRIPTION
 	  This function allows administrators to regain access to local or remote SQL Servers by either resetting the sa password, adding sysadmin role to existing login,
