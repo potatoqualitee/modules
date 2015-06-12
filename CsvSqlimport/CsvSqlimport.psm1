@@ -10,7 +10,9 @@ Function Import-CsvToSql {
 	If the table specified does not exist, it will be automatically created using (datatypes are best guess). In addition, 
 	the destination table can be truncated prior to import. 
 	
-	Everything is contained within a transaction, so if a failure occurs or the script is aborted, no changes will persist. 
+	Everything is contained within a transaction, so if a failure occurs or the script is aborted, no changes will persist.
+	
+	Supports a number of bulk copy options. Please see parameter list for details.
 	
 	Required parameters: Csv, SqlServer, Database
 	
