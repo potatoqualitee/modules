@@ -108,10 +108,13 @@ Function Import-CsvToSql {
 
 	.EXAMPLE   
 	Import-CsvToSql -Csv C:\temp\housing.csv -SqlServer sql001 -Database markets -Table housing -query `
-	"select * from csv where state = 'Louisiana'" -FirstRowColumnNames -Truncate
+	"select * from csv where state = 'Louisiana'" -FirstRowColumnNames -Truncate -TableLock -FireTriggers
 	
 	Uses the first line to determine CSV column names. Truncates the "housing" table on the SQL Server, 
 	then imports all records from housing.csv where the state equals Louisiana.
+	
+	Obtains a bulk update lock for the duration of the bulk copy operation and causes the server to fire the insert 
+	triggers for the rows being inserted.
 
 	#>
 	[CmdletBinding()] 
