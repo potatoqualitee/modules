@@ -80,9 +80,6 @@ Function Import-CsvToSql {
 	SqlBulkCopy option. Per Microsoft "Obtain a bulk update lock for the duration of the bulk copy operation. When not 
 	specified, row locks are used."
 
-	.PARAMETER UseInternalTransaction
-	SqlBulkCopy option. Per Microsoft "When specified, each batch of the bulk-copy operation will occur within a transaction."
-	
 	.PARAMETER shellswitch
 	Internal parameter.
 		
@@ -145,15 +142,13 @@ Function Import-CsvToSql {
 		[switch]$FireTriggers,
 		[switch]$KeepIdentity,
 		[switch]$KeepNulls,
-		[switch]$UseInternalTransaction,
 		[switch]$shellswitch
 		)
 		
 	BEGIN {
 		
 		if ($shellswitch -eq $false) { Write-Host "Script started at $(Get-Date)`n" }
-		$elapsed = [System.Diagnostics.Stopwatch]::StartNew() 
-		
+
 		# Getting the total rows copied is a challenge. Use SqlBulkCopyExtension.
 		# http://stackoverflow.com/questions/1188384/sqlbulkcopy-row-count-when-complete
 		$source = 'namespace System.Data.SqlClient
@@ -209,7 +204,7 @@ Function Import-CsvToSql {
 
 	PROCESS {
 		# Keep an array of SqlBulkCopyOptions for later use
-		$options = "TableLock","CheckConstraints","FireTriggers","KeepIdentity","KeepNulls","UseInternalTransaction","Default","Truncate","FirstRowColumnNames"
+		$options = "TableLock","CheckConstraints","FireTriggers","KeepIdentity","KeepNulls","Default","Truncate","FirstRowColumnNames"
 		
 		# Automatically generate Table name if not specified, then prompt user to confirm
 		if ($table.length -eq 0) { 
@@ -332,6 +327,7 @@ Function Import-CsvToSql {
 			Add-Content -Path "$directory\schema.ini" -Value "ColNameHeader=$FirstRowColumnNames"
 			
 			# Get OLE datatypes and SQL datatypes by best guess on first data row
+			# Sometimes SQL will accept a datetime that OLE won't, so we'll use Text for datetime.
 			$sqldatatypes = @(); $index = 0 
 			$olecolumns = ($columns | ForEach-Object { $_ -Replace "\[|\]", '"' })
 			
@@ -343,7 +339,7 @@ Function Import-CsvToSql {
 				# switch doesn't work here :(
 				if ([int64]::TryParse($datatype,[ref]0) -eq $true) { $oledatatype = "Long"; $sqldatatype = "bigint" }
 				elseif ([double]::TryParse($datatype,[ref]0) -eq $true) { $oledatatype = "Double"; $sqldatatype = "numeric" }
-				elseif ([datetime]::TryParse($datatype,[ref]0) -eq $true) { $oledatatype = "DateTime"; $sqldatatype = "datetime" }
+				elseif ([datetime]::TryParse($datatype,[ref]0) -eq $true) { $oledatatype = "Text"; $sqldatatype = "datetime" }
 				else { $oledatatype = "Memo"; $sqldatatype = "varchar(MAX)" }
 				
 				Add-Content -Path "$directory\schema.ini" -Value "Col$($index)`=$olecolumnname $oledatatype"
@@ -367,9 +363,8 @@ Function Import-CsvToSql {
 		if ($exists -eq $false) { throw "Database does not exist on $sqlserver" }
 		Write-Output "Database exists"
 		
-		$sqlcmd = New-Object System.Data.SqlClient.SqlCommand($null, $sqlconn, $transaction)
 		$sql = "select count(*) from $database.sys.tables where name = '$table'"
-		$sqlcmd.CommandText = $sql
+		$sqlcmd = New-Object System.Data.SqlClient.SqlCommand($sql, $sqlconn, $transaction)
 		$exists = $sqlcmd.ExecuteScalar()
 
 		if ($exists -eq $false) {
@@ -393,6 +388,7 @@ Function Import-CsvToSql {
 			try { $null = $sqlcmd.ExecuteNonQuery() } catch { Write-Warning "Could not truncate $table" }
 		}
 		
+		$elapsed = [System.Diagnostics.Stopwatch]::StartNew() 
 		# Go through each file
 		foreach ($file in $csv) {
 			# Setup the connection string. Data Source is the directory that contains the csv.
@@ -418,7 +414,7 @@ Function Import-CsvToSql {
 			} catch { throw "Could not create OLEDB command." }
 		
 			# Setup bulk copy
-			Write-Output "Prepping bulk copy for $(Split-Path $file -Leaf)"
+			Write-Output "Starting bulk copy for $(Split-Path $file -Leaf)"
 
 			# Create SqlBulkCopy using default options, or options specified in command line.
 			if ($bulkCopyOptions.count -gt 1) { 
@@ -432,8 +428,8 @@ Function Import-CsvToSql {
 			# Thanks for simplifying this, CookieMonster!
 			$bulkCopy.Add_SqlRowscopied({ $global:totalrows = $args[1].RowsCopied; Write-Host "$($global:totalrows) rows copied" })
 			
+			# Write to server :D
 			try{
-				# Write to server :D
 				$null = $bulkCopy.WriteToServer($cmd.ExecuteReader("CloseConnection"))
 				$null = $transaction.Commit()
 				$finished = $true
@@ -481,12 +477,17 @@ Function Import-CsvToSql {
 				Write-Output "$total total rows copied"
 			} else { Write-Output "Transaction rolled back." }
 		}
+		
+		# Script is finished. Show elapsed time.
+		$totaltime = [math]::Round($elapsed.Elapsed.TotalSeconds,2)
+		Write-Output "`nTotal Elapsed Time: $totaltime seconds"
 	}
 
 	END {
 		# Close everything just in case & ignore errors
 		try { $null = $sqlconn.close(); $null = $sqlconn.Dispose(); $null = $conn.close; $null = $cmd.Dispose(); 
 		$null = $conn.Dispose(); $null = $bulkCopy.close(); $null = $bulkcopy.dispose() } catch {}
+		
 		if ($shellswitch -eq $false) {
 			# Delete new schema files
 			Write-Verbose "Removing automatically generated schema.ini"
@@ -504,10 +505,6 @@ Function Import-CsvToSql {
 					Move-Item $item.keys $item.values -Force -ErrorAction SilentlyContinue	
 				}
 			}
-			
-			# Script is finished. Show elapsed time.
-			$totaltime = [math]::Round($elapsed.Elapsed.TotalSeconds,2)
-			Write-Output "`nTotal Elapsed Time: $totaltime seconds."
 		}
 	}
 }
