@@ -95,9 +95,6 @@ Function Import-CsvToSql {
 	.PARAMETER CheckConstraints
 	SqlBulkCopy option. Per Microsoft "Check constraints while data is being inserted. By default, constraints are not checked."
 	
-	.PARAMETER Default
-	SqlBulkCopy option. Per Microsoft "Use the default values for all options."
-	
 	.PARAMETER FireTriggers
 	SqlBulkCopy option. Per Microsoft "When specified, cause the server to fire the insert triggers for the rows being inserted 
 	into the database."
