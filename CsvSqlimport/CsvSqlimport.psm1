@@ -1,4 +1,4 @@
-#Requires -version 3.0 
+#Requires -Version 3
 Function Import-CsvToSql {
 <# 
 	.SYNOPSIS
@@ -119,7 +119,7 @@ Function Import-CsvToSql {
 	.NOTES
 	Author: Chrissy LeMaire
 	Requires: PowerShell 3.0
-	Version: 0.8.0
+	Version: 0.8.1
 	DateUpdated: 2015-Sept-4
 
 	.LINK 
@@ -204,7 +204,7 @@ DynamicParam  {
 			$SqlCredential = Import-CliXml $SqlCredentialPath
 		}
 		
-		if ($SqlCredential.count -eq 0) {
+		if ($SqlCredential.count -eq 0 -or $SqlCredential -eq $null) {
 			$paramconn.ConnectionString = "Data Source=$sqlserver;Integrated Security=True;"
 		} else {
 			$paramconn.ConnectionString = "Data Source=$sqlserver;User Id=$($SqlCredential.UserName); Password=$($SqlCredential.GetNetworkCredential().Password);"
@@ -398,7 +398,8 @@ DynamicParam  {
 			if ($SqlCredential.count -eq 0) {
 				$tableconn.ConnectionString = "Data Source=$sqlserver;Integrated Security=True;Connection Timeout=3"
 			} else {
-				$tableconn.ConnectionString = "Data Source=$sqlserver;User Id=$($SqlCredential.UserName); Password=$($SqlCredential.GetNetworkCredential().Password);Connection Timeout=3"
+				$username = ($SqlCredential.UserName).TrimStart("\")
+				$tableconn.ConnectionString = "Data Source=$sqlserver;User Id=$username; Password=$($SqlCredential.GetNetworkCredential().Password);Connection Timeout=3"
 			}
 			try {
 				$tableconn.Open()
@@ -639,11 +640,10 @@ DynamicParam  {
 				}
 			}
 		'
-		Add-Type -ReferencedAssemblies 'System.Data.dll' -TypeDefinition $source -ErrorAction SilentlyContinue
+			Add-Type -ReferencedAssemblies 'System.Data.dll' -TypeDefinition $source -ErrorAction SilentlyContinue
 	}
 
 	Process {
-
 		# Supafast turbo mode requires a table lock, or it's just regular fast
 		if ($turbo -eq $true) { $tablelock = $true }
 		
@@ -670,17 +670,40 @@ DynamicParam  {
 		
 		# Check to ensure a Windows account wasn't used as a SQL Credential
 		if ($SqlCredential.count -gt 0 -and $SqlCredential.UserName -like "*\*") { throw "Only SQL Logins can be used as a SqlCredential." }
+				
+		# If no CSV was specified, prompt the user to select one.
+		if ($csv.length -eq 0) {
+				$fd = New-Object System.Windows.Forms.OpenFileDialog
+				$fd.InitialDirectory =  [environment]::GetFolderPath("MyDocuments")
+				$fd.Filter = "CSV Files (*.csv;*.tsv;*.txt)|*.csv;*.tsv;*.txt"
+				$fd.Title = "Select one or more CSV files"
+				$fd.MultiSelect = $true
+				$null = $fd.showdialog()
+				$csv = $fd.filenames
+				if ($csv.length -eq 0) { throw "No CSV file selected." }
+		} else {
+			foreach ($file in $csv) {
+				$exists = Test-Path $file
+				if ($exists -eq $false) { throw "$file does not exist" }
+			}
+		}
+
+		# Resolve the full path of each CSV
+		$resolvedcsv = @()
+		foreach ($file in $csv) { $resolvedcsv += (Resolve-Path $file).Path }
+		$csv = $resolvedcsv
 		
 		# UniqueIdentifier kills OLE DB / SqlBulkCopy imports. Check to see if destination table contains this datatype. 
 		if ($safe -eq $true) {
 			$sqlcheckconn = New-Object System.Data.SqlClient.SqlConnection
-			if ($SqlCredential.count -eq 0) {
+			if ($SqlCredential.count -eq 0 -or $SqlCredential -eq $null) {
 				$sqlcheckconn.ConnectionString = "Data Source=$sqlserver;Integrated Security=True;Connection Timeout=3; Initial Catalog=master"
 			} else {
-				$sqlcheckconn.ConnectionString = "Data Source=$sqlserver;User Id=$($SqlCredential.UserName); Password=$($SqlCredential.GetNetworkCredential().Password);Connection Timeout=3; Initial Catalog=master"
+				$username = ($SqlCredential.UserName).TrimStart("\")
+				$sqlcheckconn.ConnectionString = "Data Source=$sqlserver;User Id=$username; Password=$($SqlCredential.GetNetworkCredential().Password);Connection Timeout=3; Initial Catalog=master"
 			}
 			
-			try { $sqlcheckconn.Open() } catch { throw "Could not open SQL Server connection. Is $sqlserver online?" }
+			try { $sqlcheckconn.Open() } catch { throw $_.Exception }
 			
 			# Ensure database exists
 			$sql = "select count(*) from master.dbo.sysdatabases where name = '$database'"
@@ -702,7 +725,7 @@ DynamicParam  {
 				throw "UniqueIdentifier not supported by OleDB/SqlBulkCopy. Query and Safe cannot be supported."
 			}
 		}
-		
+
 		if ($safe -eq $true) {
 			# Check for drivers. First, ACE (Access) if file is smaller than 2GB, then JET
 			# ACE doesn't handle files larger than 2gb. What gives?
@@ -754,32 +777,10 @@ DynamicParam  {
 				
 				if ($SqlCredentialPath.length -gt 0) { $command += " -SqlCredentialPath $SqlCredentialPath"}
 				Write-Verbose "Switching to x86 shell, then switching back." 
-				&"$env:windir\syswow64\windowspowershell\v1.0\powershell.exe" "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser;Remove-Module Import-CsvToSql -ErrorAction SilentlyContinue;Import-Module $env:TEMP\Import-CsvToSql.psm1;$command"
+				&"$env:windir\syswow64\windowspowershell\v1.0\powershell.exe" "Set-ExecutionPolicy Bypass -Scope CurrentUser;Remove-Module Import-CsvToSql -ErrorAction SilentlyContinue;Import-Module $env:TEMP\Import-CsvToSql.psm1;$command"
 				return
 			}
 		}
-		
-		# If no CSV was specified, prompt the user to select one.
-		if ($csv.length -eq 0) {
-				$fd = New-Object System.Windows.Forms.OpenFileDialog
-				$fd.InitialDirectory =  [environment]::GetFolderPath("MyDocuments")
-				$fd.Filter = "CSV Files (*.csv;*.tsv;*.txt)|*.csv;*.tsv;*.txt"
-				$fd.Title = "Select one or more CSV files"
-				$fd.MultiSelect = $true
-				$null = $fd.showdialog()
-				$csv = $fd.filenames
-				if ($csv.length -eq 0) { throw "No CSV file selected." }
-		} else {
-			foreach ($file in $csv) {
-				$exists = Test-Path $file
-				if ($exists -eq $false) { throw "$file does not exist" }
-			}
-		}
-
-		# Resolve the full path of each CSV
-		$resolvedcsv = @()
-		foreach ($file in $csv) { $resolvedcsv += (Resolve-Path $file).Path }
-		$csv = $resolvedcsv
 	
 		# Do the first few lines contain the specified delimiter?
 		foreach ($file in $csv) {
