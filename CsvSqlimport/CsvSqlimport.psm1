@@ -588,9 +588,11 @@ DynamicParam  {
 					$sqlcolumnname = $Columns[$index]
 					$index++
 					
-					if ([int64]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "bigint" }
-					elseif ([double]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "numeric" }
-					elseif ([datetime]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "datetime" }
+					# bigint, float, and datetime are more accurate, but it didn't work
+					# as often as it should have, so we'll just go for a smaller datatype
+					if ([int64]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "varchar(255)" }
+					elseif ([double]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "varchar(255)"  }
+					elseif ([datetime]::TryParse($column,[ref]0) -eq $true) { $sqldatatype = "varchar(255)"  }
 					else { $sqldatatype = "varchar(MAX)" }
 					
 					$sqldatatypes += "$sqlcolumnname $sqldatatype"
@@ -604,7 +606,7 @@ DynamicParam  {
 			}
 			
 			Write-Output "[*] Successfully created table $table with the following column definitions:`n $($sqldatatypes -join "`n ")"
-			Write-Warning "All columns are created using a best guess, and use their maximum datatype."
+			# Write-Warning "All columns are created using a best guess, and use their maximum datatype."
 			Write-Warning "This is inefficient but allows the script to import without issues."
 			Write-Warning "Consider creating the table first using best practices if the data will be used in production."
 	}
