@@ -116,8 +116,8 @@ Function Import-CsvToSql {
 	.NOTES
 	Author: Chrissy LeMaire
 	Requires: PowerShell 3.0
-	Version: 0.8.1
-	DateUpdated: 2015-Sept-4
+	Version: 0.8.2
+	DateUpdated: 2015-Sept-6
 
 	.LINK 
 	https://gallery.technet.microsoft.com/scriptcenter/Import-Large-CSVs-into-SQL-fa339046
@@ -193,8 +193,8 @@ Function Import-CsvToSql {
 		
 DynamicParam  {
 
-	if ($sqlserver.length -gt 0) {	
-		# Ensure database and table exist on SQL Server
+	if ($sqlserver.length -gt 0) {
+		# Auto populate database list from specified sqlserver
 		$paramconn = New-Object System.Data.SqlClient.SqlConnection
 
 		if ($SqlCredentialPath.length -gt 0) {
@@ -218,6 +218,7 @@ DynamicParam  {
 			$null = $paramconn.Close()
 			$null = $paramconn.Dispose()
 		} catch { 
+			# But if the routine fails, at least let them specify a database manually
 			$databaselist = ""
 		}
 
@@ -229,6 +230,7 @@ DynamicParam  {
 		# Database list parameter setup
 		$dbattributes = New-Object -Type System.Collections.ObjectModel.Collection[System.Attribute]
 		$dbattributes.Add($attributes)
+		# If a list of databases were returned, populate the parameter set
 		if ($databaselist.length -gt 0) { 
 			$dbvalidationset = New-Object System.Management.Automation.ValidateSetAttribute -ArgumentList $databaselist
 			$dbattributes.Add($dbvalidationset) 
@@ -244,7 +246,7 @@ DynamicParam  {
 		Function Parse-OleQuery {
 		<#
 			.SYNOPSIS
-			Tests to ensure query is valid
+			Tests to ensure query is valid. This will be used for the GUI.
 
 			.EXAMPLE
 			Parse-OleQuery -Csv sqlservera -Query $query -FirstRowColumns $FirstRowColumns -delimiter $delimiter
