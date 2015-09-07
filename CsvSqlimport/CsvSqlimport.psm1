@@ -1192,7 +1192,7 @@ DynamicParam  {
 						$datatable.Load($sqlcmd.ExecuteReader())		
 						$olecolumns = ($columns | ForEach-Object { $_ -Replace "\[|\]" }) -join ', '
 						Write-Warning "Datatype mismatch."
-						Write-Output "[*] This is sometimes caused by null handling in SqlBulkCopy or by quoted data."
+						Write-Output "[*] This is sometimes caused by null handling in SqlBulkCopy, quoted data, or the first row being column names and not data (-FirstRowColumns)"
 						Write-Output "[*] This could also be because the data types don't match or the order of the columns within the CSV/SQL statement "
 						Write-Output "[*] do not line up with the order of the table within the SQL Server.`n"
 						Write-Output "[*] CSV order: $olecolumns`n"
