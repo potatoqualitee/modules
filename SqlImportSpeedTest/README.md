@@ -6,6 +6,8 @@ This module has imported over 240,000 rows per second with ten-column customer C
 
 See Get-Help Test-SqlImportSpeed -Detailed for more information.
 
+The results.jpg shows a sample run for me. The results tend to vary, but this was an average. Highest I ever hit was with the non-memory optimized Customers dataset at 242,317 rows a second.
+
 Examples
 ----- 
     Test-SqlImportSpeed -SqlServer sqlserver2014a
