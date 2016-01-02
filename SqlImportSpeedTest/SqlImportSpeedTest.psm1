@@ -141,7 +141,8 @@ BEGIN {
 		if ($memoryOptimized -eq $true) {
 			$defaultpath = Get-SqlDefaultPath  $conn
 			$mosql = "ALTER DATABASE [$database] ADD FILEGROUP [memoptimized] CONTAINS MEMORY_OPTIMIZED_DATA
-					  ALTER DATABASE [pssqlbulkcopy] ADD FILE ( NAME = N'pssqlbulkcopy_mo', FILENAME = N'$defaultpath\$database_mo.ndf' ) TO FILEGROUP [memoptimized]"
+			ALTER DATABASE [pssqlbulkcopy] ADD FILE ( NAME = N'pssqlbulkcopy_mo', FILENAME = N'$defaultpath\$database_mo.ndf' ) TO FILEGROUP [memoptimized]
+			ALTER DATABASE [$database] SET MEMORY_OPTIMIZED_ELEVATE_TO_SNAPSHOT ON"
 		}
 		
 		if ($dataset -eq "verylarge") { $dbsize = "20GB" } else { $dbsize = "1GB" }
@@ -369,7 +370,7 @@ PROCESS {
 	
 	# Setup runspace pool and the scriptblock that runs inside each runspace
 	$pool = [RunspaceFactory]::CreateRunspacePool($MinRunspaces,$MaxRunspaces)
-	#$pool.ApartmentState = "MTA"
+	$pool.ApartmentState = "MTA"
 	$pool.Open()
 	$jobs = @()
 	
@@ -414,9 +415,8 @@ PROCESS {
 		   $null = $job.AddArgument($batchsize)
 		   $job.RunspacePool = $pool
 		   $jobs += [PSCustomObject]@{ Pipe = $job; Status = $job.BeginInvoke() }
-		   # So good
-		   $datatable = New-Object System.Data.DataTable
-		   foreach ($column in $columns) { $datatable.Columns.Add() > $null }
+		   # overwrite the datatable 
+		   $datatable = $datatable.Clone()
 		}
 	}
 
