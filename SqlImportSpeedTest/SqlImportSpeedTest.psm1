@@ -456,7 +456,7 @@ PROCESS {
 }
 
 END {
-	if ($conn.State -eq "Open") { write-warning "yes"; $conn.Close(); $conn.Dispose()}
+	if ($conn.State -eq "Open") { $conn.Close(); $conn.Dispose() }
 	if ($secs -gt 0) { 
 			if ($dataset -eq "verylarge") { $total = 25000000 } else { $total = 1000000}
 			# Write out stats for million row csv file
