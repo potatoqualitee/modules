@@ -4,6 +4,7 @@ Some SQL Server professionals are under the impression that PowerShell is slow. 
 
 This module has imported over 240,000 rows per second with ten-column customer CSV datasets and 580,000 rows per second with two-column CSV datasets. This performance is on-par with bcp.exe, a command line utility known for it's super fast import speeds.
 
+See Get-Help Test-SqlImportSpeed -Detailed for more information.
 
 Examples
 ----- 
