@@ -154,12 +154,26 @@ BEGIN {
 				CREATE DATABASE  [$database]
 				ALTER DATABASE [$database] MODIFY FILE ( NAME = N'$database', SIZE = $dbsize )
 				ALTER DATABASE [$database] MODIFY FILE ( NAME = N'$($database)_log', SIZE = 10MB )
-				$mosql
-
 				ALTER DATABASE [$database] SET RECOVERY SIMPLE WITH NO_WAIT
 				ALTER DATABASE [$database] SET PAGE_VERIFY NONE
 				ALTER DATABASE [$database] SET AUTO_UPDATE_STATISTICS OFF
-				ALTER DATABASE [$database] SET AUTO_CREATE_STATISTICS OFF"
+				ALTER DATABASE [$database] SET AUTO_CREATE_STATISTICS OFF
+				ALTER DATABASE [$database] SET AUTO_CLOSE OFF
+				ALTER DATABASE [$database] SET AUTO_SHRINK OFF
+				ALTER DATABASE [$database] SET ANSI_WARNINGS OFF
+				ALTER DATABASE [$database] SET ARITHABORT OFF
+				ALTER DATABASE [$database] SET ANSI_PADDING OFF
+				ALTER DATABASE [$database] SET CURSOR_CLOSE_ON_COMMIT OFF
+				ALTER DATABASE [$database] SET CONCAT_NULL_YIELDS_NULL OFF
+				ALTER DATABASE [$database] SET NUMERIC_ROUNDABORT OFF
+				ALTER DATABASE [$database] SET QUOTED_IDENTIFIER OFF
+				ALTER DATABASE [$database] SET RECURSIVE_TRIGGERS OFF
+				ALTER DATABASE [$database] SET AUTO_UPDATE_STATISTICS_ASYNC OFF
+				ALTER DATABASE [$database] SET DATE_CORRELATION_OPTIMIZATION OFF
+				ALTER DATABASE [$database] SET PARAMETERIZATION SIMPLE
+				ALTER DATABASE [$database] SET ALLOW_SNAPSHOT_ISOLATION OFF
+				$mosql
+"
 		Write-Verbose $sql
 		$cmd.CommandText = $sql
 		try {
@@ -458,6 +472,7 @@ PROCESS {
 	# Wait for runspaces to complete
 	while ($jobs.Status.IsCompleted -notcontains $true) {}
 	$secs = $elapsed.Elapsed.TotalSeconds
+	Write-Output "Timer complete"
 	
 	# if you'd like to see any resulting errors, uncomment this section, and add a return $error[0] after $dtbatch.Dispose() several lines up.
 	# Don't forget to comment out the subsequent foreach statement
@@ -494,10 +509,10 @@ END {
 			
 			if ($dataset -eq "verylarge") { 
 				Write-Warning "You should now run the following to clear memory:`n    1..3 | foreach { [System.GC]::Collect() }"
-				Write-Warning "This is only required for the verylarge dataset." 
+				Write-Warning "This is only required for the verylarge dataset."		
 			} else {
 				Write-Output "Collecting garbage"
-				Invoke-GarbageCollection 
+				Invoke-GarbageCollection
 			}
 			
 			Write-Output "$mill rows imported in $([math]::round($secs,2)) seconds ($rs rows/sec and $rm rows/min)"	
