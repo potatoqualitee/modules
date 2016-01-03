@@ -2,11 +2,11 @@ SqlImportSpeedTest
 --------------
 Some SQL Server professionals are under the impression that PowerShell is slow. This module was created to demonstrate PowerShell's performance capabilities.
 
-This module has imported over 240,000 rows per second with ten-column customer CSV datasets and 580,000 rows per second with two-column CSV datasets. This performance is on-par with bcp.exe, a command line utility known for it's super fast import speeds.
+This module has imported over 250,000 rows per second with ten-column customer CSV datasets and 580,000 rows per second with two-column CSV datasets. This performance is on-par with bcp.exe, a command line utility known for it's super fast import speeds.
 
 See Get-Help Test-SqlImportSpeed -Detailed for more information.
 
-The results.jpg shows a sample run for me. The results tend to vary, but this was an average. Highest I ever hit was with the non-memory optimized Customers dataset at 242,317 rows a second.
+The results.jpg shows a sample run for me. The results tend to vary, but this was an average. Highest I ever hit was with the non-memory optimized Customers dataset at 277,145 rows/sec (16,628,671 rows/min). That was a one-off though. Most average 230k/sec.
 
 Datasets
 ----- 
