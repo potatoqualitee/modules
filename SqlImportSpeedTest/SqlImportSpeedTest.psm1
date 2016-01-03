@@ -2,11 +2,10 @@
 Function Test-SqlImportSpeed {
 <#
 .SYNOPSIS
-Demonstrates high performance inserts using PowerShell, Runspaces, and SqlBulkCopy. The secret sauce are batched dataset imports and runspaces within the streamreader.
+Demonstrates high performance inserts using PowerShell, Runspaces, and SqlBulkCopy. The secret sauce are batched dataset imports and runspaces within the StreamReader.
 
 .DESCRIPTION
-This script is intended to demonstrate the efficiency of really cool programming technique. It also proves PowerShell's performance capabilities. It is an accompaniment to
-the blog post SqlImportSpeed at netnerds.net
+This script is intended to demonstrate the efficiency of really cool programming technique. It also proves PowerShell's performance capabilities.
 
 There are three datasets to choose from, long/lat data from geonames.org, customers data from the Chinook sample database, and a really small two column table. Each dataset has exactly 1,000,000 rows and the datasets are realistic; the geonames dataset has 19 columns and customers dataset has 12, all with varied and accurate datatypes.
 
@@ -204,17 +203,17 @@ BEGIN {
 							
 							$sql = "CREATE TABLE[dbo].[speedtest](
 							$customerid
-							[FirstName] [nvarchar](40) NOT NULL,
-							[LastName] [nvarchar](20) NOT NULL,
-							[Company] [nvarchar](80) NULL,
-							[Address] [varchar](70) NULL,
-							[City] [nvarchar](40) NULL,
-							[State] [varchar](40) NULL,
-							[Country] [varchar](40) NULL,
-							[PostalCode] [nvarchar](10) NULL,
-							[Phone] [nvarchar](24) NULL,
-							[Fax] [nvarchar](24) NULL,
-							[Email] [nvarchar](60) NOT NULL
+							[FirstName] [nvarchar](40),
+							[LastName] [nvarchar](20),
+							[Company] [nvarchar](80),
+							[Address] [nvarchar](70),
+							[City] [nvarchar](40),
+							[State] [varchar](40),
+							[Country] [varchar](40),
+							[PostalCode] [varchar](10),
+							[Phone] [varchar](24),
+							[Fax] [varchar](24),
+							[Email] [varchar](60)
 						) $with"
 						}
 			"longlats" {
@@ -505,11 +504,12 @@ END {
 			# Write out stats for million row csv file
 			$rs = "{0:N0}" -f [int]($total / $secs)
 			$rm = "{0:N0}" -f [int]($total / $secs * 60)
+			$ram =  "{0:N2}" -f $((Get-Process -PID $pid).WorkingSet64/1GB)
 			$mill = "{0:N0}" -f $total
 			
-			if ($dataset -eq "verylarge") { 
-				Write-Warning "You should now run the following to clear memory:`n    1..3 | foreach { [System.GC]::Collect() }"
-				Write-Warning "This is only required for the verylarge dataset."		
+			if ($dataset -eq "verylarge") {
+				Write-Output "Memory usage is now at $ram GB, which can take up to 6 minutes to clear."
+				Write-Output "You can now run the following to clear memory:`n    1..3 | foreach { [System.GC]::Collect() }"
 			} else {
 				Write-Output "Collecting garbage"
 				Invoke-GarbageCollection
