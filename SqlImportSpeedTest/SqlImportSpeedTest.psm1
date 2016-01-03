@@ -205,26 +205,26 @@ BEGIN {
 						}
 			"longlats" {
 					$sql = "CREATE TABLE [dbo].[speedtest](
-						[GeoNameId] [int],
-						[Name] [nvarchar](200),
-						[AsciiName] [nvarchar](200),
-						[AlternateNames] [nvarchar](max),
-						[Latitude] [float],
-						[Longitude] [float],
-						[FeatureClass] [char](1),
-						[FeatureCode] [varchar](10),
-						[CountryCode] [char](2),
-						[Cc2] [varchar](255),
-						[Admin1Code] [varchar](20),
-						[Admin2Code] [varchar](80),
-						[Admin3Code] [varchar](20),
-						[Admin4Code] [varchar](20),
-						[Population] [bigint],
-						[Elevation] [varchar](255),
-						[Dem] [int],
-						[Timezone] [varchar](40),
-						[ModificationDate] [smalldatetime]
-					)"
+							[GeoNameId] [int],
+							[Name] [nvarchar](200),
+							[AsciiName] [nvarchar](200),
+							[AlternateNames] [nvarchar](max),
+							[Latitude] [float],
+							[Longitude] [float],
+							[FeatureClass] [char](1),
+							[FeatureCode] [varchar](10),
+							[CountryCode] [char](2),
+							[Cc2] [varchar](255),
+							[Admin1Code] [varchar](20),
+							[Admin2Code] [varchar](80),
+							[Admin3Code] [varchar](20),
+							[Admin4Code] [varchar](20),
+							[Population] [bigint],
+							[Elevation] [varchar](255),
+							[Dem] [int],
+							[Timezone] [varchar](40),
+							[ModificationDate] [smalldatetime]
+					    )"
 			}
 			
 		}
@@ -234,6 +234,26 @@ BEGIN {
 
 		try { $cmd.ExecuteNonQuery() > $null} 
 		catch { throw $_.Exception.Message.ToString() }
+	}
+	
+	Function Test-SqlSa {
+	
+	}
+	
+	Function Clear-DbCache {
+		$cmd.CommandText = "SELECT IS_SRVROLEMEMBER ('sysadmin')"
+		$sysadmin = $cmd.ExecuteScalar()
+		
+		if ($sysadmin -eq $true) {
+			Write-Output "Clearing cache"
+			$conn.ChangeDatabase($database)
+			$sql = "CHECKPOINT; DBCC DROPCLEANBUFFERS"
+			Write-Verbose $sql
+			$cmd.CommandText = $sql
+			
+			try { $cmd.ExecuteNonQuery() > $null} 
+			catch { throw $_.Exception.Message.ToString() }
+		}
 	}
 }
 
@@ -340,6 +360,9 @@ PROCESS {
 	
 	Write-Output "Creating table speedtest"
 	New-Table
+	
+	# Clear cache. Not sure if dropping a db does that.
+	Clear-DbCache
 	
 	# Check network packetsize. This doesn't make a big impact for me but it may in other environments.
 	$packetsize = Get-SqlPacketSize
@@ -456,7 +479,12 @@ PROCESS {
 }
 
 END {
-	if ($conn.State -eq "Open") { $conn.Close(); $conn.Dispose() }
+	if ($conn.State -eq "Open") { 
+		$conn.Close()
+		$conn.Dispose()
+		[System.Data.SqlClient.SqlConnection]::ClearAllPools()
+	}
+	
 	if ($secs -gt 0) { 
 			if ($dataset -eq "verylarge") { $total = 25000000 } else { $total = 1000000}
 			# Write out stats for million row csv file
