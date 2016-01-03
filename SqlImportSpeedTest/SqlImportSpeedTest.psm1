@@ -459,7 +459,7 @@ PROCESS {
 	while ($jobs.Status.IsCompleted -notcontains $true) {}
 	$secs = $elapsed.Elapsed.TotalSeconds
 	
-	# if you'd like to see any resulting errors, uncomment this section, and add a return $error[0] after $dtbatch.Dispose() on line 360.
+	# if you'd like to see any resulting errors, uncomment this section, and add a return $error[0] after $dtbatch.Dispose() several lines up.
 	# Don't forget to comment out the subsequent foreach statement
 	
 	<#
