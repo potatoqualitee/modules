@@ -293,11 +293,7 @@ BEGIN {
 
 PROCESS {
 	
-	# Ensure geonames dataset isn't selected if -MemoryOptimized is set
-	#if ($dataset.length -eq 0 -and $memoryOptimized -eq $false) { $dataset =  "geonames" }
-	#if ($dataset.length -eq 0 -and $memoryOptimized -eq $true) { $dataset =  "Customers" }
-	
-	if ($Append -eq $true) { $nodbdrop = $true }
+	if ($append -eq $true) { $nodbdrop = $true }
 
 	# Show warning if db name is not pssqlbulkcopy and -Force was not specified
 	if ($database -ne "pssqlbulkcopy" -and ($force -eq $false -or $append -eq $false)) {
