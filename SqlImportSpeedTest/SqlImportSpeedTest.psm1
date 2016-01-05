@@ -65,6 +65,12 @@ Optional. Don't drop/recreate database.
 .PARAMETER Append
 Optional. Don't drop/recreate table.
 
+.PARAMETER NoLockEscalation
+Optional. Disable LockEscalation on table
+
+.PARAMETER Threading
+Optional. Apartment State for Runspaces. MTA for multithreaded and STA for single-threaded
+
 .PARAMETER Force
 Optional. If you use the -Database parameter, it'll warn you that the database will be dropped and recreated, then prompt to confirm. If you use -Force, there will be no prompt.
 
@@ -112,6 +118,9 @@ param(
 	[switch]$MemoryOptimized,
 	[switch]$NoDbDrop,
 	[switch]$Append,
+	[switch]$NoLockEscalation,
+	[ValidateSet("Multi","Single")] 
+	[string]$Threading="Multi",
 	[switch]$Force
 )
 
@@ -163,7 +172,7 @@ BEGIN {
 			ALTER DATABASE [pssqlbulkcopy] ADD FILE ( NAME = N'pssqlbulkcopy_mo', FILENAME = N'$defaultpath\$database_mo.ndf' ) TO FILEGROUP [memoptimized]
 			ALTER DATABASE [$database] SET MEMORY_OPTIMIZED_ELEVATE_TO_SNAPSHOT ON"
 		}
-		
+	
 		if ($dataset -eq "verylarge") { $dbsize = "6GB" } else { $dbsize = "1GB" }
 		$sql = "IF  EXISTS (SELECT name FROM master.dbo.sysdatabases WHERE name = N'$database')
 				BEGIN
@@ -204,7 +213,7 @@ BEGIN {
 	
 	Function New-Table {
 		$conn.ChangeDatabase($database)
-		
+		if ($nolockescalation) { $le = "`nALTER TABLE $table SET (LOCK_ESCALATION = DISABLE)" }
 		switch ($dataset) {
 			"supersmall" {
 							if ($memoryOptimized -eq $true) {
@@ -262,6 +271,7 @@ BEGIN {
 			
 		}
 		
+		$sql += $le
 		Write-Verbose $sql
 		$cmd.CommandText = $sql
 
@@ -294,7 +304,12 @@ BEGIN {
 PROCESS {
 	
 	if ($append -eq $true) { $nodbdrop = $true }
-
+	
+	switch ($threading) {
+		"Multi" { $apartmentstate = "MTA" }
+		"Single" { $apartmentstate = "STA" }
+	}
+	
 	# Show warning if db name is not pssqlbulkcopy and -Force was not specified
 	if ($database -ne "pssqlbulkcopy" -and ($force -eq $false -or $append -eq $false)) {
 		$message = "This script will drop the database '$database' and recreate it."
@@ -340,7 +355,8 @@ PROCESS {
 		$bulkoptions = "Default"
 	} else { $bulkoptions = "TableLock" }
 	
-	
+	if ($nolockescalation -eq $true -and $sqlversion -lt 10) { throw "You can only disable lock escalation in SQL Server 2008 and above." }
+		
 	# Set dataset info
 	if ($dataset -eq "geonames") {
 		$csvfile = "$([Environment]::GetFolderPath('MyDocuments'))\geonames.csv"
@@ -427,7 +443,7 @@ PROCESS {
 	
 	# Setup runspace pool and the scriptblock that runs inside each runspace
 	$pool = [RunspaceFactory]::CreateRunspacePool($MinRunspaces,$MaxRunspaces)
-	$pool.ApartmentState = "MTA"
+	$pool.ApartmentState = $apartmentstate
 	$pool.Open()
 	$jobs = @()
 	
