@@ -15,8 +15,7 @@ If the csv files do not reside in the expected location (My Documents), they'll 
 
 By default, Test-SqlImportSpeed creates a database called pssqlbulkcopy, then imports one customer dataset to a table called speedtest.
 
-When ran against SQL Server 2014 or greater, it can support memory optimized tables. The actual execution doesn't have a lot of error handling (like SqlBulkCopy itself) because 
-that slows stuff down.  The blog post will explain how to troubleshoot.
+When ran against SQL Server 2014 or greater, it can support memory optimized tables. The actual execution doesn't have a lot of error handling (like SqlBulkCopy itself) because that slows stuff down.  The blog post will explain how to troubleshoot.
 
 Warning: This script leaves behind the CSV files it downloads, and the database it creates.
 
@@ -71,6 +70,12 @@ Optional. Disable LockEscalation on table
 .PARAMETER Threading
 Optional. Apartment State for Runspaces. MTA for multithreaded and STA for single-threaded
 
+.PARAMETER ShowErrors
+Optional. Shows errors returned from the bulkinsert.
+
+.PARAMETER EnableStreaming
+Optional. Enables Streaming on SqlBulkCopy object. Doesn't usually have a positive impact.
+
 .PARAMETER Force
 Optional. If you use the -Database parameter, it'll warn you that the database will be dropped and recreated, then prompt to confirm. If you use -Force, there will be no prompt.
 
@@ -79,7 +84,7 @@ Optional. If you use the -Database parameter, it'll warn you that the database w
 Author  : Chrissy LeMaire (@cl), netnerds.net
 Requires:     PowerShell Version 3.0, db creator privs on destination SQL Server
 DateUpdated: 2016-1-4
-Version: 0.7.0
+Version: 0.7.1
 
 .EXAMPLE   
 Test-SqlImportSpeed -SqlServer sqlserver2014a
@@ -121,6 +126,8 @@ param(
 	[switch]$NoLockEscalation,
 	[ValidateSet("Multi","Single")] 
 	[string]$Threading="Multi",
+	[switch]$ShowErrors,
+	[switch]$EnableStreaming,
 	[switch]$Force
 )
 
@@ -188,18 +195,6 @@ BEGIN {
 				ALTER DATABASE [$database] SET AUTO_CREATE_STATISTICS OFF
 				ALTER DATABASE [$database] SET AUTO_CLOSE OFF
 				ALTER DATABASE [$database] SET AUTO_SHRINK OFF
-				ALTER DATABASE [$database] SET ANSI_WARNINGS OFF
-				ALTER DATABASE [$database] SET ARITHABORT OFF
-				ALTER DATABASE [$database] SET ANSI_PADDING OFF
-				ALTER DATABASE [$database] SET CURSOR_CLOSE_ON_COMMIT OFF
-				ALTER DATABASE [$database] SET CONCAT_NULL_YIELDS_NULL OFF
-				ALTER DATABASE [$database] SET NUMERIC_ROUNDABORT OFF
-				ALTER DATABASE [$database] SET QUOTED_IDENTIFIER OFF
-				ALTER DATABASE [$database] SET RECURSIVE_TRIGGERS OFF
-				ALTER DATABASE [$database] SET AUTO_UPDATE_STATISTICS_ASYNC OFF
-				ALTER DATABASE [$database] SET DATE_CORRELATION_OPTIMIZATION OFF
-				ALTER DATABASE [$database] SET PARAMETERIZATION SIMPLE
-				ALTER DATABASE [$database] SET ALLOW_SNAPSHOT_ISOLATION OFF
 				$mosql
 "
 		Write-Verbose $sql
@@ -282,6 +277,24 @@ BEGIN {
 			Write-Output "Table may already exist. Use -Append to append."
 			throw $_.Exception.Message.ToString()
 		}
+	}
+	
+	Function Get-Rowcount {
+		$conn.ChangeDatabase($database)
+		$sql = "SELECT COUNT(*) from $table"
+
+		Write-Verbose $sql
+		$cmd.CommandText = $sql
+
+		try 
+		{ 
+			$rows = $cmd.ExecuteScalar()
+		} catch {
+			Write-Output "Couldn't get rowcount."
+			throw $_.Exception.Message.ToString()
+		}
+		
+		return $rows
 	}
 	
 	Function Clear-DbCache {
@@ -444,8 +457,9 @@ PROCESS {
 	# Setup runspace pool and the scriptblock that runs inside each runspace
 	$pool = [RunspaceFactory]::CreateRunspacePool($MinRunspaces,$MaxRunspaces)
 	$pool.ApartmentState = $apartmentstate
+	$pool.CleanupInterval =  (New-TimeSpan -Minutes 1)
 	$pool.Open()
-	$jobs = @()
+	$runspaces = @()
 	
 	# This is the workhorse.
 	$scriptblock = {
@@ -454,17 +468,24 @@ PROCESS {
 		[object]$dtbatch,
 		[string]$bulkoptions,
 		[int]$batchsize,
-		[string]$table
+		[string]$table,
+		[bool]$enablestreaming
 	   )
 	   
 		$bulkcopy = New-Object Data.SqlClient.SqlBulkCopy($connectionstring,$bulkoptions)
 		$bulkcopy.DestinationTableName = $table
 		$bulkcopy.BatchSize = $batchsize
+		
+		if ($enablestreaming -eq $true) {
+			$bulkcopy.EnableStreaming = $true
+		}
+		
 		$bulkcopy.WriteToServer($dtbatch)
 		$bulkcopy.Close()
 		$dtbatch.Clear()
 		$bulkcopy.Dispose()
 		$dtbatch.Dispose()
+		return $error
 	}
 
 	Write-Output "Starting insert. Timer begins now."
@@ -480,15 +501,16 @@ PROCESS {
 		$null = $datatable.Rows.Add($line.Split("`t"))
 		
 		if ($datatable.rows.count % $batchsize -eq 0) {
-		   $job = [PowerShell]::Create()
-		   $null = $job.AddScript($scriptblock)
-		   $null = $job.AddArgument($connectionString)
-		   $null = $job.AddArgument($datatable)
-		   $null = $job.AddArgument($bulkoptions)
-		   $null = $job.AddArgument($batchsize)
-		   $null = $job.AddArgument($table)
-		   $job.RunspacePool = $pool
-		   $jobs += [PSCustomObject]@{ Pipe = $job; Status = $job.BeginInvoke() }
+		   $runspace = [PowerShell]::Create()
+		   $null = $runspace.AddScript($scriptblock)
+		   $null = $runspace.AddArgument($connectionString)
+		   $null = $runspace.AddArgument($datatable)
+		   $null = $runspace.AddArgument($bulkoptions)
+		   $null = $runspace.AddArgument($batchsize)
+		   $null = $runspace.AddArgument($table)
+		   $null = $runspace.AddArgument($enablestreaming)
+		   $runspace.RunspacePool = $pool
+		   $runspaces += [PSCustomObject]@{ Pipe = $runspace; Status = $runspace.BeginInvoke() }
 		   # overwrite the datatable 
 		   $datatable = $datatable.Clone()
 		}
@@ -507,22 +529,23 @@ PROCESS {
 	}
 
 	# Wait for runspaces to complete
-	while ($jobs.Status.IsCompleted -notcontains $true) {}
+	while ($runspaces.Status.IsCompleted -notcontains $true) {}
 	$secs = $elapsed.Elapsed.TotalSeconds
 	Write-Output "Timer complete"
 	
-	# if you'd like to see any resulting errors, uncomment this section, and add a return $error[0] after $dtbatch.Dispose() several lines up.
-	# Don't forget to comment out the subsequent foreach statement
-	
-	<#
-	$errors = @()
-	foreach ($job in $jobs) { $results += $job.Pipe.EndInvoke($job.Status) }
-	$errors 
-	#>
-	
-	foreach ($job in $jobs ) { 
-		$null = $job.Pipe.EndInvoke($job.Status)
-		$job.Pipe.Dispose()
+	if ($showerrors -eq $true) {
+		$errors = @()
+		foreach ($runspace in $runspaces) { 
+			$errors += $runspace.Pipe.EndInvoke($runspace.Status) 
+			$runspace.Pipe.Dispose()
+		}
+		$errors 
+	}
+	else {
+		foreach ($runspace in $runspaces ) { 
+			$null = $runspace.Pipe.EndInvoke($runspace.Status)
+			$runspace.Pipe.Dispose()
+		}
 	}
 	
 	$pool.Close() 
@@ -531,14 +554,12 @@ PROCESS {
 }
 
 END {
-	if ($conn.State -eq "Open") { 
-		$conn.Close()
-		$conn.Dispose()
-		[System.Data.SqlClient.SqlConnection]::ClearAllPools()
-	}
-	
-	if ($secs -gt 0) { 
-			if ($dataset -eq "verylarge") { $total = 25000000 } else { $total = 1000000}
+	if ($secs -gt 0) {
+			$total = Get-Rowcount
+			
+			if ($total -ne 1000000 -and $total -ne 25000000) {
+				Write-Warning "Some rows were dropped."
+			}
 			# Write out stats for million row csv file
 			$rs = "{0:N0}" -f [int]($total / $secs)
 			$rm = "{0:N0}" -f [int]($total / $secs * 60)
@@ -555,5 +576,12 @@ END {
 			
 			Write-Output "$mill rows imported in $([math]::round($secs,2)) seconds ($rs rows/sec and $rm rows/min)"	
 		}
+		# Close pools
+	if ($conn.State -eq "Open") { 
+		$conn.Close()
+		$conn.Dispose()
+		[System.Data.SqlClient.SqlConnection]::ClearAllPools()
 	}
+
+}
 }
