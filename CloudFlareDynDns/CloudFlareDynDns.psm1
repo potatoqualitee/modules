@@ -31,6 +31,13 @@ Function Update-CloudFlareDynamicDns
         Resolves hostname using DNS instead of checking CloudFlare. The intention is to reduce the number of calls to CloudFlare (they allow 200 reqs/minute, which is usually plenty), but the downside is that if the IP changes, it won't be updated until the hostname expires from cache. 
 
         .EXAMPLE
+        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com
+        
+		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of example.com. (Root Domain)
+		
+		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+
+        .EXAMPLE
         Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab
         
 		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of homelab.example.com.
@@ -65,15 +72,17 @@ Function Update-CloudFlareDynamicDns
         [Parameter(mandatory = $true)]
         [string]$Zone,
 
-        [Parameter(mandatory = $true)]
+        [Parameter(mandatory = $false)]
         [string]$Record,
 		
 		[Parameter(mandatory = $false)]
         [switch]$UseDns
     )
-	
-	$hostname = "$record.$zone"
-	
+	if ($record) {
+		$hostname = "$record.$zone"
+	} else {
+		$hostname = "$zone"
+	}
 	$headers = @{
 		'X-Auth-Key' = $token
 		'X-Auth-Email' = $email
