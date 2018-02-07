@@ -105,7 +105,7 @@ Function Update-CloudFlareDynamicDns
 	if ($cfzone.result.count -gt 0) { $zoneid = $cfzone.result.id } else { throw "Zone $zone does not exist" }
 	
 	Write-Output "Getting current IP for $hostname"
-	$recordurl = $baseurl+'/'+$zoneid+'/dns_records/?name='+$hostname+'&type=A'
+	$recordurl = "$baseurl/$zoneid/dns_records/?name=$hostname&type=A"
 	
 	if ($usedns -eq $true) { 
 		try { 
