@@ -1,4 +1,5 @@
 #Requires -Version 3
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Function Update-CloudFlareDynamicDns
 {
     <# 
