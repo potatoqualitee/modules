@@ -29,33 +29,45 @@ Function Update-CloudFlareDynamicDns
 		Using -Zone netnerds.net and -Record homelab would update homelab.netnerds.net
 		
 		.PARAMETER UseDns
-        Resolves hostname using DNS instead of checking CloudFlare. The intention is to reduce the number of calls to CloudFlare (they allow 200 reqs/minute, which is usually plenty), but the downside is that if the IP changes, it won't be updated until the hostname expires from cache. 
+		Resolves hostname using DNS instead of checking CloudFlare. The intention is to reduce the number of calls to CloudFlare (they allow 200 reqs/minute, which is usually plenty), but the downside is that if the IP changes, it won't be updated until the hostname expires from cache. 
+		
+		.PARAMETER Ip
+		Allows to specify the IP explicitily, disabling automatic recognition of the external IP. Can be an IPv4 or IPv6 address.
+
+		.PARAMETER V6
+		Updates AAAA record with current external IPv6 address (instead of updating A record with IPv4 address). IPv4/IPv6 is determined automatically if an explicit IP is specified via the -Ip parameter.
 
         .EXAMPLE
         Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com
         
-		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of example.com. (Root Domain)
+		Checks ipify.org for current external IP address. Checks CloudFlare's API for current IP of example.com. (Root Domain)
 		
 		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
 
         .EXAMPLE
         Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab
         
-		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of homelab.example.com.
+		Checks ipify.org for current external IP address. Checks CloudFlare's API for current IP of homelab.example.com.
 		
-		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+		If A record for homelab.example.com doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
 
         .EXAMPLE
-        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -UseDns
+        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -UseDns -V6
         
-		Checks ipinfo.io for current external IP address. Checks DNS for current IP of homelab.example.com. Beware of cached entries.
+		Checks ipify.org for current external IPv6 address. Checks DNS for current IPv6 address of homelab.example.com. Beware of cached entries.
 		
-		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+		If AAAA record for homelab.example.com doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+
+		.EXAMPLE
+		Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -Ip "2a02:8172:41d1:2422:eca4:dead:beef:affe"
+
+		Updates the AAAA record for homelab.example.com to 2a02:8172:41d1:2422:eca4:dead:beef:affe. The record will be created if needed.
+
 		
         .NOTES
-        Author: Chrissy LeMaire (@cl), netnerds.net
-		Version: 1.0.0
-        Updated: 12/27/2015
+        Authors: Chrissy LeMaire (@cl), netnerds.net; Martin F. Schumann (@mfs)
+		Version: 1.1.0
+        Updated: 06/22/2019
 
         .LINK
         https://netnerds.net
@@ -77,7 +89,14 @@ Function Update-CloudFlareDynamicDns
         [string]$Record,
 		
 		[Parameter(mandatory = $false)]
-        [switch]$UseDns
+		[switch]$UseDns,
+		
+		[Parameter(mandatory = $false)]
+		[ValidateScript({$_ -match [ipaddress]$_})]
+		[string]$Ip,
+
+		[Parameter(mandatory = $false)]
+		[switch]$V6
     )
 	if ($record) {
 		$hostname = "$record.$zone"
@@ -89,13 +108,33 @@ Function Update-CloudFlareDynamicDns
 		'X-Auth-Email' = $email
 	}
 
-	Write-Output "Resolving external IP"
-	try { $ipaddr = Invoke-RestMethod http://ipinfo.io/json | Select-Object -ExpandProperty ip }
-	catch { throw "Can't get external IP Address. Quitting." }
+	if ($Ip -and ([ipaddress]$Ip).AddressFamily -eq [System.Net.Sockets.AddressFamily]"InterNetworkV6") {
+		$V6 = $true
+	}
 
-	if ($ipaddr -eq $null) { throw "Can't get external IP Address. Quitting." }
-	Write-Output "External IP is $ipaddr"
-	
+	if ($V6) {
+		$externalIPresolver = "https://api6.ipify.org?format=json"
+		$addrType = [System.Net.Sockets.AddressFamily]"InterNetworkV6"
+		$recordType = "AAAA"
+	} else {
+		$externalIPresolver = "https://api.ipify.org?format=json"
+		$addrType = [System.Net.Sockets.AddressFamily]"InterNetwork"
+		$recordType = "A"
+	}
+
+
+	if ($Ip) {
+		Write-Output "Using external IP $Ip"
+		$ipaddr = $Ip
+	} else {
+		Write-Output "Resolving external IP"
+		try { $ipaddr = Invoke-RestMethod $externalIPresolver | Select-Object -ExpandProperty ip }
+		catch { throw "Can't get external IP Address. Quitting." }
+
+		if ($null -eq $ipaddr) { throw "Can't get external IP Address. Quitting." }
+		Write-Output "External IP is $ipaddr"
+	}
+
 	Write-Output "Getting Zone information from CloudFlare"
 	$baseurl = "https://api.cloudflare.com/client/v4/zones"
 	$zoneurl = "$baseurl/?name=$zone"
@@ -110,7 +149,7 @@ Function Update-CloudFlareDynamicDns
 	
 	if ($usedns -eq $true) { 
 		try { 
-			$cfipaddr = [System.Net.Dns]::GetHostEntry($hostname).AddressList[0].IPAddressToString
+			$cfipaddr = ([System.Net.Dns]::GetHostEntry($hostname).AddressList | Where-Object {$_.AddressFamily -eq $addrType})[0].IPAddressToString
 			Write-Output "$hostname resolves to $cfipaddr"
 		} catch {
 			$new = $true
@@ -120,6 +159,7 @@ Function Update-CloudFlareDynamicDns
 		try { $dnsrecord = Invoke-RestMethod -Headers $headers -Method Get -Uri $recordurl } 
 		catch { throw $_.Exception }
 		
+		[array]$dnsrecord.result = $dnsrecord.result | Where-Object {$_.Type -eq $recordType}
 		if ($dnsrecord.result.count -gt 0) {
 			$cfipaddr = $dnsrecord.result.content
 			Write-Output "$hostname resolves to $cfipaddr"
@@ -140,7 +180,10 @@ Function Update-CloudFlareDynamicDns
 	# If the ip has changed or didn't exist, update or add
 	if ($usedns) {
 		Write-Output "Getting CloudFlare Info"
-		try { $dnsrecord = Invoke-RestMethod -Headers $headers -Method Get -Uri $recordurl } 
+		try { 
+			$dnsrecord = Invoke-RestMethod -Headers $headers -Method Get -Uri $recordurl 
+			[array]$dnsrecord.result = $dnsrecord.result | Where-Object {$_.Type -eq $recordType};
+		} 
 		catch { throw $_.Exception }
 	}
 	
@@ -158,7 +201,7 @@ Function Update-CloudFlareDynamicDns
 	} else {
 		Write-Output "Adding $hostname to CloudFlare"
 		$newrecord = @{
-			"type" = "A"
+			"type" = $recordType
 			"name" =  $hostname
 			"content" = $ipaddr
 		}
@@ -167,7 +210,7 @@ Function Update-CloudFlareDynamicDns
 		$newrecordurl = "$baseurl/$zoneid/dns_records"
 		
 		try {
-			$request = Invoke-RestMethod -Uri $newrecordurl -Method Post -Headers $headers -Body $body -ContentType "application/json"
+			Invoke-RestMethod -Uri $newrecordurl -Method Post -Headers $headers -Body $body -ContentType "application/json";
 			Write-Output "Done! $hostname will now resolve to $ipaddr."
 		} catch {
 			Write-Warning "Couldn't update :("
