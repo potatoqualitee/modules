@@ -15,7 +15,12 @@ Function Update-CloudFlareDynamicDns
         .PARAMETER Token
         CloudFlare API Token. 
 		
-		As of 22 Dec 2015, you can find your API key at: https://www.cloudflare.com/a/account/my-account -> API Key
+        As of 11 Feb 2020, you can create API tokens at: https://dash.cloudflare.com/profile/api-tokens-> API Tokens
+        
+        .PARAMETER Key
+        CloudFlare API Key. 
+		
+		As of 11 Feb 2020, you can find your API key at: https://dash.cloudflare.com/profile/api-tokens -> API Keys
 		
         .PARAMETER Email
         The email address associated with your CloudFlare account
@@ -32,25 +37,46 @@ Function Update-CloudFlareDynamicDns
         Resolves hostname using DNS instead of checking CloudFlare. The intention is to reduce the number of calls to CloudFlare (they allow 200 reqs/minute, which is usually plenty), but the downside is that if the IP changes, it won't be updated until the hostname expires from cache. 
 
         .EXAMPLE
+        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Zone example.com
+        
+		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of example.com. (Root Domain)
+		
+		Using an API token, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+
+        .EXAMPLE
+        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Zone example.com -Record homelab
+        
+		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of homelab.example.com.
+		
+		Using an API token, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+
+        .EXAMPLE
+        Update-CloudFlareDynamicDns -Key 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -UseDns
+        
+		Checks ipinfo.io for current external IP address. Checks DNS for current IP of homelab.example.com. Beware of cached entries.
+		
+		Using an API token, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+        
+        .EXAMPLE
         Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com
         
 		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of example.com. (Root Domain)
 		
-		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+		Using the API key, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
 
         .EXAMPLE
-        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab
+        Update-CloudFlareDynamicDns -Key 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab
         
 		Checks ipinfo.io for current external IP address. Checks CloudFlare's API for current IP of homelab.example.com.
 		
-		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+		Using the API key, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
 
         .EXAMPLE
-        Update-CloudFlareDynamicDns -Token 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -UseDns
+        Update-CloudFlareDynamicDns -Key 1234567893feefc5f0q5000bfo0c38d90bbeb -Email example@example.com -Zone example.com -Record homelab -UseDns
         
 		Checks ipinfo.io for current external IP address. Checks DNS for current IP of homelab.example.com. Beware of cached entries.
 		
-		If record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
+		Using the API key, if record doesn't exist within CloudFlare, it will be created. If record exists, but does not match to current external IP, the record will be updated. If the external IP and the CloudFlare IP match, no changes will be made.
 		
         .NOTES
         Author: Chrissy LeMaire (@cl), netnerds.net
@@ -63,10 +89,23 @@ Function Update-CloudFlareDynamicDns
     [cmdletbinding()]
     param
     (
-        [Parameter(mandatory = $true)]
+        [Parameter(
+            ParameterSetName='token',
+            mandatory = $true
+            )
+        ]
         [string]$Token,
-
-        [Parameter(mandatory = $true)]
+        
+        [Parameter(
+            ParameterSetName='key',
+            mandatory = $true
+        )]
+        [string]$Key,
+        
+        [Parameter(
+            ParameterSetName='key',
+            mandatory = $true
+        )]
         [ValidatePattern("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")]
         [string]$Email,
 
@@ -79,15 +118,23 @@ Function Update-CloudFlareDynamicDns
 		[Parameter(mandatory = $false)]
         [switch]$UseDns
     )
+
 	if ($record) {
 		$hostname = "$record.$zone"
 	} else {
 		$hostname = "$zone"
-	}
-	$headers = @{
-		'X-Auth-Key' = $token
-		'X-Auth-Email' = $email
-	}
+    }
+
+    if ($Token){
+        $headers = @{
+            'Authorization' = "Bearer $Token"
+        }
+    } else {
+        $headers = @{
+            'X-Auth-Key' = $key
+            'X-Auth-Email' = $email
+	    }
+    }
 
 	Write-Output "Resolving external IP"
 	try { $ipaddr = Invoke-RestMethod http://ipinfo.io/json | Select-Object -ExpandProperty ip }
@@ -98,7 +145,7 @@ Function Update-CloudFlareDynamicDns
 	
 	Write-Output "Getting Zone information from CloudFlare"
 	$baseurl = "https://api.cloudflare.com/client/v4/zones"
-	$zoneurl = "$baseurl/?name=$zone"
+	$zoneurl = "$($baseurl)?name=$zone"
 
 	try { $cfzone = Invoke-RestMethod -Uri $zoneurl -Method Get -Headers $headers } 
 	catch { throw $_.Exception }
